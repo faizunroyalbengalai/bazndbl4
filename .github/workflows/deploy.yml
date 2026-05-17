@@ -36,6 +36,7 @@ jobs:
       packages: write
     outputs:
       image:    ${{ steps.meta.outputs.image }}
+      db_image: ${{ steps.db_meta.outputs.db_image }}
     steps:
       - uses: actions/checkout@v4
       - name: Log in to GitHub Container Registry
@@ -54,6 +55,16 @@ jobs:
         run: |
           docker build -t ${{ steps.meta.outputs.image }} .
           docker push ${{ steps.meta.outputs.image }}
+      - name: Mirror DB image to GHCR
+        id: db_meta
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          SOURCE_IMAGE="postgres:16"
+          DB_TAG="ghcr.io/${OWNER_LOWER}/bazndbl4-db:postgres-16"
+          docker pull "${SOURCE_IMAGE}"
+          docker tag  "${SOURCE_IMAGE}" "${DB_TAG}"
+          docker push "${DB_TAG}"
+          echo "db_image=${DB_TAG}" >> $GITHUB_OUTPUT
 
   # ── Provision ACI via Terraform ─────────────────────────────────────────
   provision:
@@ -94,6 +105,7 @@ jobs:
           [ -n "$DB_NAME" ]     && EXTRA_ARGS+=(-var "db_name=$DB_NAME")
           [ -n "$DB_USERNAME" ] && EXTRA_ARGS+=(-var "db_username=$DB_USERNAME")
           [ -n "$DB_PASSWORD" ] && EXTRA_ARGS+=(-var "db_password=$DB_PASSWORD")
+          EXTRA_ARGS+=(-var "db_image=${{ needs.build_push.outputs.db_image }}")
           terraform plan \
             -var="project_name=${{ secrets.PROJECT_NAME }}" \
             -var="azure_region=${{ secrets.AZURE_REGION }}" \
@@ -204,6 +216,9 @@ jobs:
           echo "::endgroup::"
           echo "::group::App container logs"
           az container logs -g "$RG" -n "$CG" --container-name app || true
+          echo "::endgroup::"
+          echo "::group::DB container logs"
+          az container logs -g "$RG" -n "$CG" --container-name db || true
           echo "::endgroup::"
           echo "::group::Recent container events"
           az container show -g "$RG" -n "$CG" \

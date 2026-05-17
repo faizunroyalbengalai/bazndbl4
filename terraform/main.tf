@@ -117,13 +117,40 @@ resource "azurerm_container_group" "app" {
       PORT     = tostring(var.app_port)
       NODE_ENV = "production"
       APP_ENV  = "production"
+      DB_HOST     = "127.0.0.1"
+      DB_PORT     = "5432"
+      DB_NAME     = var.db_name != "" ? var.db_name : "${replace(var.project_name, "-", "_")}db"
+      DB_USERNAME = var.db_username
+      DB_USER     = var.db_username
+      DB_TYPE     = "postgres"
     }
 
     secure_environment_variables = {
       DB_PASSWORD = var.db_password
+      DATABASE_URL = "postgresql://${var.db_username}:${var.db_password}@127.0.0.1:5432/${var.db_name != "" ? var.db_name : "${replace(var.project_name, "-", "_")}db"}"
     }
   }
 
+  container {
+    name   = "db"
+    image  = var.db_image
+    cpu    = 0.5
+    memory = 1.0
+
+    ports {
+      port     = 5432
+      protocol = "TCP"
+    }
+
+    environment_variables = {
+      POSTGRES_DB   = var.db_name != "" ? var.db_name : "${replace(var.project_name, "-", "_")}db"
+      POSTGRES_USER = var.db_username
+      PGPORT        = "5432"
+    }
+    secure_environment_variables = {
+      POSTGRES_PASSWORD = var.db_password
+    }
+  }
 
   tags = {
     Project   = var.project_name
